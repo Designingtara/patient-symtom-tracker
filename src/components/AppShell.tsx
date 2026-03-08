@@ -33,7 +33,7 @@ export function AppShell({ children }: AppShellProps) {
           <header className="h-12 flex items-center border-b bg-card">
             <SidebarTrigger className="ml-2" />
           </header>
-          <main className="flex-1 p-6" role="main">
+          <main className="flex-1 p-6 page-transition" role="main">
             {children}
           </main>
         </div>
