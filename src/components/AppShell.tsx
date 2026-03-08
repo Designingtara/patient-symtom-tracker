@@ -17,7 +17,7 @@ export function AppShell({ children }: AppShellProps) {
         <header className="sticky top-0 z-40 border-b bg-card px-4 py-3">
           <h1 className="text-xl font-bold">Ebbi</h1>
         </header>
-        <main className="px-4 py-4" role="main">
+        <main className="px-4 py-4 page-transition" role="main">
           {children}
         </main>
         <BottomNav />
