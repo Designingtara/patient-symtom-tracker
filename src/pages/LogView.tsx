@@ -11,26 +11,22 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useLocalStorage } from '@/hooks/use-local-storage';
-import { useToast } from '@/hooks/use-toast';
 import {
   MOOD_OPTIONS, PHYSICAL_SYMPTOMS, MENTAL_EMOTIONAL_SYMPTOMS,
   BODY_AREAS, BODY_SIDES, FUNCTIONAL_IMPACTS, MEDICATION_OPTIONS,
   POSITIVE_FACTOR_GROUPS, EXERCISE_INTENSITIES, SYMPTOM_CATEGORIES,
 } from '@/lib/constants';
 import type { MoodOption } from '@/lib/constants';
-import type { LogEntry, BodyAreaEntry } from '@/lib/types';
+import type { LogEntry, BodyAreaEntry, SymptomProfile, AppSettings } from '@/lib/types';
+import { DEFAULT_SETTINGS, moodToDayType } from '@/lib/types';
 
-const moodStyles: Record<MoodOption, string> = {
-  'Rough day': 'bg-secondary text-foreground border-2 border-secondary',
-  'Okay day': 'bg-accent text-foreground border-2 border-accent',
-  'Good day': 'bg-accent-sage text-foreground border-2 border-accent-sage',
-};
-
-const moodActiveStyles: Record<MoodOption, string> = {
-  'Rough day': 'bg-secondary ring-2 ring-primary border-2 border-primary shadow-md',
-  'Okay day': 'bg-accent ring-2 ring-primary border-2 border-primary shadow-md',
-  'Good day': 'bg-accent-sage ring-2 ring-primary border-2 border-primary shadow-md',
-};
+import MoodSelector from '@/components/log/MoodSelector';
+import SeveritySlider from '@/components/log/SeveritySlider';
+import GoodDayFactors from '@/components/log/GoodDayFactors';
+import LayerDetail from '@/components/log/LayerDetail';
+import LayerImpacts from '@/components/log/LayerImpacts';
+import ProfileBar from '@/components/log/ProfileBar';
+import ConfirmationToast from '@/components/log/ConfirmationToast';
 
 export default function LogView() {
   const [date, setDate] = useState<Date>(new Date());
@@ -45,8 +41,11 @@ export default function LogView() {
   const [functionalImpacts, setFunctionalImpacts] = useState<string[]>([]);
   const [positiveFactors, setPositiveFactors] = useState<string[]>([]);
   const [exerciseIntensity, setExerciseIntensity] = useState<string>('');
+  const [notes, setNotes] = useState('');
   const [entries, setEntries] = useLocalStorage<LogEntry[]>('ebbi-entries', []);
-  const { toast } = useToast();
+  const [settings] = useLocalStorage<AppSettings>('ebbi-settings', DEFAULT_SETTINGS);
+  const [profiles] = useLocalStorage<SymptomProfile[]>('ebbi-profiles', []);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const isGoodDay = mood === 'Good day';
 
@@ -54,45 +53,54 @@ export default function LogView() {
     setter(arr.includes(item) ? arr.filter(i => i !== item) : [...arr, item]);
   };
 
-  const toggleBodyArea = (area: string, side: string) => {
-    const exists = bodyAreas.find(b => b.area === area && b.side === side);
-    if (exists) {
-      setBodyAreas(bodyAreas.filter(b => !(b.area === area && b.side === side)));
-    } else {
-      // Remove other sides for same area, add new
-      setBodyAreas([...bodyAreas.filter(b => b.area !== area), { area, side }]);
+  const applyProfile = (profile: SymptomProfile) => {
+    if (profile.categories.length > 0) setCategories(profile.categories);
+    if (profile.symptoms.length > 0) setSymptoms(profile.symptoms);
+    if (profile.bodyAreas.length > 0) setBodyAreas(profile.bodyAreas);
+    if (profile.functionalImpacts.length > 0) setFunctionalImpacts(profile.functionalImpacts);
+    // Auto-expand layers if profile has detail
+    if (profile.symptoms.length > 0 || profile.bodyAreas.length > 0 || profile.categories.length > 0) {
+      setShowLayer2(true);
     }
-  };
-
-  const filteredSymptoms = () => {
-    let result: readonly string[] = [];
-    if (categories.includes('Physical')) result = [...result, ...PHYSICAL_SYMPTOMS];
-    if (categories.includes('Mental-emotional')) result = [...result, ...MENTAL_EMOTIONAL_SYMPTOMS];
-    if (categories.length === 0) result = [...PHYSICAL_SYMPTOMS, ...MENTAL_EMOTIONAL_SYMPTOMS];
-    return result;
+    if (profile.functionalImpacts.length > 0) {
+      setShowLayer3(true);
+    }
   };
 
   const handleSave = () => {
-    if (!mood) {
-      toast({ title: 'Please select how your day was', variant: 'destructive' });
-      return;
-    }
+    if (!mood) return;
+
     const entry: LogEntry = {
       id: crypto.randomUUID(),
       date: format(date, 'yyyy-MM-dd'),
-      mood,
-      ...(!isGoodDay && { severity: severity[0] }),
-      ...(categories.length > 0 && { categories }),
-      ...(symptoms.length > 0 && { symptoms }),
-      ...(bodyAreas.length > 0 && { bodyAreas }),
-      ...(medication !== 'None' && { medication }),
-      ...(functionalImpacts.length > 0 && { functionalImpacts }),
-      ...(positiveFactors.length > 0 && { positiveFactors }),
-      ...(exerciseIntensity && { exerciseIntensity }),
+      timestamp: Date.now(),
+      dayType: moodToDayType(mood),
+      severity: isGoodDay ? null : severity[0],
     };
+
+    // Only save fields that are visible via settings
+    if (!isGoodDay) {
+      if (settings.showCategories && categories.length > 0) entry.category = categories;
+      if (settings.showSymptoms && symptoms.length > 0) entry.symptoms = symptoms;
+      if (settings.showBodyAreas && bodyAreas.length > 0) entry.bodyAreas = bodyAreas;
+      if (settings.showMedication && medication !== 'None') entry.medication = medication;
+      if (settings.showFunctionalImpacts && functionalImpacts.length > 0) entry.functionalImpacts = functionalImpacts;
+    }
+
+    if (isGoodDay && settings.showPositiveFactors) {
+      if (positiveFactors.length > 0) entry.positiveFactors = positiveFactors;
+      if (exerciseIntensity) entry.exerciseIntensity = exerciseIntensity;
+    }
+
+    if (notes.trim()) entry.notes = notes.trim();
+
     setEntries(prev => [...prev, entry]);
-    toast({ title: 'Entry saved ✓' });
-    // Reset
+
+    // Show confirmation
+    setShowConfirmation(true);
+    setTimeout(() => setShowConfirmation(false), 2000);
+
+    // Reset form, keep date
     setMood(null);
     setSeverity([5]);
     setShowLayer2(false);
@@ -104,11 +112,20 @@ export default function LogView() {
     setFunctionalImpacts([]);
     setPositiveFactors([]);
     setExerciseIntensity('');
+    setNotes('');
   };
 
   return (
-    <div className="max-w-lg mx-auto space-y-4">
+    <div className="max-w-lg mx-auto space-y-4 relative">
       <h1 className="text-2xl font-bold">Log your day</h1>
+
+      {/* Confirmation overlay */}
+      <ConfirmationToast visible={showConfirmation} />
+
+      {/* Symptom profiles bar */}
+      {profiles.length > 0 && !isGoodDay && (
+        <ProfileBar profiles={profiles} onApply={applyProfile} />
+      )}
 
       {/* Layer 1 */}
       <Card className="shadow-sm">
@@ -143,111 +160,27 @@ export default function LogView() {
           </div>
 
           {/* Mood */}
-          <div>
-            <Label className="text-sm font-medium mb-3 block">How was your day?</Label>
-            <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Day mood">
-              {MOOD_OPTIONS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  role="radio"
-                  aria-checked={mood === option}
-                  onClick={() => setMood(option)}
-                  className={cn(
-                    'min-h-[44px] rounded-lg px-3 py-3 text-sm font-medium transition-all text-center',
-                    mood === option ? moodActiveStyles[option] : moodStyles[option],
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
-                  )}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
+          <MoodSelector mood={mood} onSelect={setMood} />
 
           {/* Severity (hidden when Good day) */}
           {mood && !isGoodDay && (
-            <div>
-              <Label className="text-sm font-medium mb-3 block">
-                Severity: {severity[0]}/10
-              </Label>
-              <div className="px-1">
-                <Slider
-                  value={severity}
-                  onValueChange={setSeverity}
-                  min={0}
-                  max={10}
-                  step={1}
-                  className="w-full"
-                  aria-label="Severity level"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>Manageable</span>
-                  <span>Severe</span>
-                </div>
-              </div>
-            </div>
+            <SeveritySlider severity={severity} onChange={setSeverity} />
           )}
 
           {/* Good day positive factors */}
-          {isGoodDay && (
-            <div className="space-y-4">
-              <h3 className="text-base font-semibold">What helped today?</h3>
-              {Object.entries(POSITIVE_FACTOR_GROUPS).map(([group, items]) => (
-                <div key={group}>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">{group}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {items.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => toggleArrayItem(positiveFactors, item, setPositiveFactors)}
-                        className={cn(
-                          'min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium transition-all',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                          positiveFactors.includes(item)
-                            ? 'bg-accent ring-2 ring-primary shadow-sm'
-                            : 'bg-muted text-foreground hover:bg-accent/50'
-                        )}
-                        aria-pressed={positiveFactors.includes(item)}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Exercise intensity sub-selector */}
-                  {group === 'Exercise' && positiveFactors.includes('Exercise') && (
-                    <div className="mt-3 ml-2">
-                      <p className="text-xs text-muted-foreground mb-2">Intensity</p>
-                      <div className="flex gap-2">
-                        {EXERCISE_INTENSITIES.map((intensity) => (
-                          <button
-                            key={intensity}
-                            type="button"
-                            onClick={() => setExerciseIntensity(intensity)}
-                            className={cn(
-                              'min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium transition-all',
-                              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                              exerciseIntensity === intensity
-                                ? 'bg-accent-sage ring-2 ring-primary shadow-sm'
-                                : 'bg-muted text-foreground hover:bg-accent/50'
-                            )}
-                            aria-pressed={exerciseIntensity === intensity}
-                          >
-                            {intensity}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+          {isGoodDay && settings.showPositiveFactors && (
+            <GoodDayFactors
+              positiveFactors={positiveFactors}
+              exerciseIntensity={exerciseIntensity}
+              onToggleFactor={(item) => toggleArrayItem(positiveFactors, item, setPositiveFactors)}
+              onSetIntensity={setExerciseIntensity}
+            />
           )}
 
           {/* Save */}
           <Button
             onClick={handleSave}
+            disabled={!mood}
             className="w-full min-h-[44px] bg-accent hover:bg-accent/80 text-foreground font-semibold"
             aria-label="Save log entry"
           >
@@ -258,157 +191,36 @@ export default function LogView() {
 
       {/* Layer 2 - Add detail */}
       {mood && !isGoodDay && (
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <button
-              type="button"
-              onClick={() => setShowLayer2(!showLayer2)}
-              className="flex w-full items-center justify-between min-h-[44px] text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg px-2"
-              aria-expanded={showLayer2}
-            >
-              <span>Add detail</span>
-              {showLayer2 ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-
-            {showLayer2 && (
-              <div className="mt-4 space-y-6">
-                {/* Category toggles */}
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">Category</Label>
-                  <div className="flex gap-2">
-                    {SYMPTOM_CATEGORIES.map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => toggleArrayItem(categories, cat, setCategories)}
-                        className={cn(
-                          'min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium transition-all',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                          categories.includes(cat)
-                            ? 'bg-accent ring-2 ring-primary shadow-sm'
-                            : 'bg-muted text-foreground hover:bg-accent/50'
-                        )}
-                        aria-pressed={categories.includes(cat)}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Symptom type selector */}
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">Symptoms</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {filteredSymptoms().map((symptom) => (
-                      <button
-                        key={symptom}
-                        type="button"
-                        onClick={() => toggleArrayItem(symptoms, symptom, setSymptoms)}
-                        className={cn(
-                          'min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium transition-all',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                          symptoms.includes(symptom)
-                            ? 'bg-accent ring-2 ring-primary shadow-sm'
-                            : 'bg-muted text-foreground hover:bg-accent/50'
-                        )}
-                        aria-pressed={symptoms.includes(symptom)}
-                      >
-                        {symptom}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Body area selector */}
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">Body area</Label>
-                  <div className="space-y-2">
-                    {BODY_AREAS.map((area) => {
-                      const selected = bodyAreas.find(b => b.area === area);
-                      return (
-                        <div key={area} className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm min-w-[90px]">{area}</span>
-                          {BODY_SIDES.map((side) => (
-                            <button
-                              key={side}
-                              type="button"
-                              onClick={() => toggleBodyArea(area, side)}
-                              className={cn(
-                                'min-h-[44px] min-w-[44px] px-3 py-1 rounded-lg text-xs font-medium transition-all',
-                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                                selected?.side === side
-                                  ? 'bg-accent ring-2 ring-primary shadow-sm'
-                                  : 'bg-muted text-foreground hover:bg-accent/50'
-                              )}
-                              aria-pressed={selected?.side === side}
-                            >
-                              {side}
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Medication need */}
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">Medication need</Label>
-                  <RadioGroup value={medication} onValueChange={setMedication} className="grid grid-cols-2 gap-2">
-                    {MEDICATION_OPTIONS.map((option) => (
-                      <div key={option} className="flex items-center">
-                        <RadioGroupItem
-                          value={option}
-                          id={`med-${option}`}
-                          className="min-h-[20px] min-w-[20px]"
-                        />
-                        <Label htmlFor={`med-${option}`} className="ml-2 text-sm cursor-pointer min-h-[44px] flex items-center">
-                          {option}
-                        </Label>
-                      </div>
-                    ))}
-                  </RadioGroup>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <LayerDetail
+          show={showLayer2}
+          onToggle={() => setShowLayer2(!showLayer2)}
+          settings={settings}
+          categories={categories}
+          symptoms={symptoms}
+          bodyAreas={bodyAreas}
+          medication={medication}
+          onToggleCategory={(cat) => toggleArrayItem(categories, cat, setCategories)}
+          onToggleSymptom={(sym) => toggleArrayItem(symptoms, sym, setSymptoms)}
+          onToggleBodyArea={(area, side) => {
+            const exists = bodyAreas.find(b => b.area === area && b.side === side);
+            if (exists) {
+              setBodyAreas(bodyAreas.filter(b => !(b.area === area && b.side === side)));
+            } else {
+              setBodyAreas([...bodyAreas.filter(b => b.area !== area), { area, side }]);
+            }
+          }}
+          onSetMedication={setMedication}
+        />
       )}
 
       {/* Layer 3 - Functional impacts */}
-      {mood && !isGoodDay && (
-        <Card className="shadow-sm">
-          <CardContent className="pt-4">
-            <button
-              type="button"
-              onClick={() => setShowLayer3(!showLayer3)}
-              className="flex w-full items-center justify-between min-h-[44px] text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg px-2"
-              aria-expanded={showLayer3}
-            >
-              <span>What needed extra effort today?</span>
-              {showLayer3 ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
-
-            {showLayer3 && (
-              <div className="mt-4 space-y-3">
-                {FUNCTIONAL_IMPACTS.map((impact) => (
-                  <div key={impact} className="flex items-center min-h-[44px]">
-                    <Checkbox
-                      id={`impact-${impact}`}
-                      checked={functionalImpacts.includes(impact)}
-                      onCheckedChange={() => toggleArrayItem(functionalImpacts, impact, setFunctionalImpacts)}
-                      className="min-h-[20px] min-w-[20px]"
-                    />
-                    <Label htmlFor={`impact-${impact}`} className="ml-3 text-sm cursor-pointer">
-                      {impact}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {mood && !isGoodDay && settings.showFunctionalImpacts && (
+        <LayerImpacts
+          show={showLayer3}
+          onToggle={() => setShowLayer3(!showLayer3)}
+          functionalImpacts={functionalImpacts}
+          onToggleImpact={(impact) => toggleArrayItem(functionalImpacts, impact, setFunctionalImpacts)}
+        />
       )}
     </div>
   );

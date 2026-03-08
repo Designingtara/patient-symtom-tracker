@@ -8,16 +8,26 @@ export interface BodyAreaEntry {
 export interface LogEntry {
   id: string;
   date: string;
-  mood: MoodOption;
-  severity?: number;
-  categories?: string[];
+  timestamp: number;
+  dayType: 'rough' | 'okay' | 'good';
+  severity: number | null;
+  category?: string[];
   symptoms?: string[];
   bodyAreas?: BodyAreaEntry[];
   medication?: string;
   functionalImpacts?: string[];
   positiveFactors?: string[];
-  sleepAids?: string[];
   exerciseIntensity?: string;
+  notes?: string;
+}
+
+export interface SymptomProfile {
+  id: string;
+  name: string;
+  symptoms: string[];
+  bodyAreas: BodyAreaEntry[];
+  functionalImpacts: string[];
+  categories: string[];
 }
 
 export interface AppSettings {
@@ -39,3 +49,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showPositiveFactors: true,
   notifications: false,
 };
+
+/** Map MoodOption display text to stored dayType */
+export function moodToDayType(mood: MoodOption): LogEntry['dayType'] {
+  switch (mood) {
+    case 'Rough day': return 'rough';
+    case 'Okay day': return 'okay';
+    case 'Good day': return 'good';
+  }
+}
