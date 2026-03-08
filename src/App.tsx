@@ -9,6 +9,7 @@ import DashboardView from "./pages/DashboardView";
 import SettingsView from "./pages/SettingsView";
 import AboutView from "./pages/AboutView";
 import NotFound from "./pages/NotFound";
+import { OnboardingDialog } from "@/components/OnboardingDialog";
 
 const queryClient = new QueryClient();
 
@@ -18,8 +19,8 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <OnboardingDialog />
         <AppShell>
-          <Routes>
             <Route path="/" element={<Navigate to="/log" replace />} />
             <Route path="/log" element={<LogView />} />
             <Route path="/dashboard" element={<DashboardView />} />
