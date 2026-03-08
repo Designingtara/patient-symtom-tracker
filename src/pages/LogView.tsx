@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { format } from 'date-fns';
+import { useState, useMemo } from 'react';
+import { format, differenceInDays } from 'date-fns';
 import { CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,6 +21,23 @@ import ProfileBar from '@/components/log/ProfileBar';
 import ConfirmationToast from '@/components/log/ConfirmationToast';
 import SpeakButton from '@/components/log/SpeakButton';
 import NotesField from '@/components/log/NotesField';
+import CatchUpCard from '@/components/log/CatchUpCard';
+
+/** Count symptom frequencies across entries, return top N */
+function getTopSymptoms(entries: LogEntry[], n: number): string[] {
+  const counts: Record<string, number> = {};
+  for (const e of entries) {
+    if (e.symptoms) {
+      for (const s of e.symptoms) {
+        counts[s] = (counts[s] || 0) + 1;
+      }
+    }
+  }
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([s]) => s);
+}
 
 export default function LogView() {
   const [date, setDate] = useState<Date>(new Date());
@@ -41,7 +58,20 @@ export default function LogView() {
   const [profiles] = useLocalStorage<SymptomProfile[]>('ebbi-profiles', []);
   const [showConfirmation, setShowConfirmation] = useState(false);
 
+  // Catch-up state (session only)
+  const [catchUpDismissed, setCatchUpDismissed] = useState(false);
+
   const isGoodDay = mood === 'Good day';
+
+  // Catch-up logic
+  const showCatchUp = useMemo(() => {
+    if (catchUpDismissed || entries.length < 5) return false;
+    const latest = entries.reduce((max, e) => Math.max(max, e.timestamp), 0);
+    if (latest === 0) return false;
+    return differenceInDays(new Date(), new Date(latest)) >= 3;
+  }, [entries, catchUpDismissed]);
+
+  const topSymptoms = useMemo(() => getTopSymptoms(entries, 5), [entries]);
 
   const toggleArrayItem = (arr: string[], item: string, setter: (v: string[]) => void) => {
     setter(arr.includes(item) ? arr.filter(i => i !== item) : [...arr, item]);
@@ -105,6 +135,22 @@ export default function LogView() {
     setNotes('');
   };
 
+  const handleCatchUpSave = (data: { symptoms: string[]; severity: number; dayType: 'rough' | 'okay' }) => {
+    const entry: LogEntry = {
+      id: crypto.randomUUID(),
+      date: format(new Date(), 'yyyy-MM-dd'),
+      timestamp: Date.now(),
+      dayType: data.dayType,
+      severity: data.severity,
+    };
+    if (data.symptoms.length > 0) entry.symptoms = data.symptoms;
+
+    setEntries(prev => [...prev, entry]);
+    setCatchUpDismissed(true);
+    setShowConfirmation(true);
+    setTimeout(() => setShowConfirmation(false), 2000);
+  };
+
   return (
     <div className="max-w-lg mx-auto space-y-4 relative">
       <div className="flex items-center justify-between">
@@ -113,6 +159,16 @@ export default function LogView() {
       </div>
 
       <ConfirmationToast visible={showConfirmation} />
+
+      {/* Catch-up prompt */}
+      {showCatchUp && (
+        <CatchUpCard
+          topSymptoms={topSymptoms}
+          profiles={profiles}
+          onDismiss={() => setCatchUpDismissed(true)}
+          onSave={handleCatchUpSave}
+        />
+      )}
 
       {profiles.length > 0 && !isGoodDay && (
         <ProfileBar profiles={profiles} onApply={applyProfile} />
