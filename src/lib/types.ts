@@ -38,6 +38,7 @@ export interface AppSettings {
   showFunctionalImpacts: boolean;
   showPositiveFactors: boolean;
   notifications: boolean;
+  voiceInput: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -48,6 +49,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showFunctionalImpacts: true,
   showPositiveFactors: true,
   notifications: false,
+  voiceInput: false,
 };
 
 /** Map MoodOption display text to stored dayType */

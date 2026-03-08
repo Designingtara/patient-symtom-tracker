@@ -1,21 +1,13 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { CalendarIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Slider } from '@/components/ui/slider';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useLocalStorage } from '@/hooks/use-local-storage';
-import {
-  MOOD_OPTIONS, PHYSICAL_SYMPTOMS, MENTAL_EMOTIONAL_SYMPTOMS,
-  BODY_AREAS, BODY_SIDES, FUNCTIONAL_IMPACTS, MEDICATION_OPTIONS,
-  POSITIVE_FACTOR_GROUPS, EXERCISE_INTENSITIES, SYMPTOM_CATEGORIES,
-} from '@/lib/constants';
 import type { MoodOption } from '@/lib/constants';
 import type { LogEntry, BodyAreaEntry, SymptomProfile, AppSettings } from '@/lib/types';
 import { DEFAULT_SETTINGS, moodToDayType } from '@/lib/types';
@@ -27,6 +19,8 @@ import LayerDetail from '@/components/log/LayerDetail';
 import LayerImpacts from '@/components/log/LayerImpacts';
 import ProfileBar from '@/components/log/ProfileBar';
 import ConfirmationToast from '@/components/log/ConfirmationToast';
+import SpeakButton from '@/components/log/SpeakButton';
+import NotesField from '@/components/log/NotesField';
 
 export default function LogView() {
   const [date, setDate] = useState<Date>(new Date());
@@ -58,7 +52,6 @@ export default function LogView() {
     if (profile.symptoms.length > 0) setSymptoms(profile.symptoms);
     if (profile.bodyAreas.length > 0) setBodyAreas(profile.bodyAreas);
     if (profile.functionalImpacts.length > 0) setFunctionalImpacts(profile.functionalImpacts);
-    // Auto-expand layers if profile has detail
     if (profile.symptoms.length > 0 || profile.bodyAreas.length > 0 || profile.categories.length > 0) {
       setShowLayer2(true);
     }
@@ -78,7 +71,6 @@ export default function LogView() {
       severity: isGoodDay ? null : severity[0],
     };
 
-    // Only save fields that are visible via settings
     if (!isGoodDay) {
       if (settings.showCategories && categories.length > 0) entry.category = categories;
       if (settings.showSymptoms && symptoms.length > 0) entry.symptoms = symptoms;
@@ -95,8 +87,6 @@ export default function LogView() {
     if (notes.trim()) entry.notes = notes.trim();
 
     setEntries(prev => [...prev, entry]);
-
-    // Show confirmation
     setShowConfirmation(true);
     setTimeout(() => setShowConfirmation(false), 2000);
 
@@ -117,12 +107,13 @@ export default function LogView() {
 
   return (
     <div className="max-w-lg mx-auto space-y-4 relative">
-      <h1 className="text-2xl font-bold">Log your day</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Log your day</h1>
+        <SpeakButton mood={mood} isGoodDay={isGoodDay} severity={severity} />
+      </div>
 
-      {/* Confirmation overlay */}
       <ConfirmationToast visible={showConfirmation} />
 
-      {/* Symptom profiles bar */}
       {profiles.length > 0 && !isGoodDay && (
         <ProfileBar profiles={profiles} onApply={applyProfile} />
       )}
@@ -132,16 +123,17 @@ export default function LogView() {
         <CardContent className="pt-6 space-y-6">
           {/* Date */}
           <div>
-            <Label className="text-sm font-medium mb-2 block">Date</Label>
+            <Label htmlFor="date-picker" className="text-sm font-medium mb-2 block">Date</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
+                  id="date-picker"
                   variant="outline"
                   className={cn(
                     'w-full justify-start text-left font-normal min-h-[44px]',
                     !date && 'text-muted-foreground'
                   )}
-                  aria-label="Select date"
+                  aria-label={`Select date, currently ${format(date, 'PPP')}`}
                 >
                   <CalendarIcon className="mr-2 h-4 w-4" aria-hidden="true" />
                   {format(date, 'PPP')}
@@ -159,15 +151,12 @@ export default function LogView() {
             </Popover>
           </div>
 
-          {/* Mood */}
           <MoodSelector mood={mood} onSelect={setMood} />
 
-          {/* Severity (hidden when Good day) */}
           {mood && !isGoodDay && (
             <SeveritySlider severity={severity} onChange={setSeverity} />
           )}
 
-          {/* Good day positive factors */}
           {isGoodDay && settings.showPositiveFactors && (
             <GoodDayFactors
               positiveFactors={positiveFactors}
@@ -177,7 +166,15 @@ export default function LogView() {
             />
           )}
 
-          {/* Save */}
+          {/* Notes field */}
+          {mood && (
+            <NotesField
+              notes={notes}
+              onChange={setNotes}
+              voiceEnabled={settings.voiceInput}
+            />
+          )}
+
           <Button
             onClick={handleSave}
             disabled={!mood}
@@ -189,7 +186,7 @@ export default function LogView() {
         </CardContent>
       </Card>
 
-      {/* Layer 2 - Add detail */}
+      {/* Layer 2 */}
       {mood && !isGoodDay && (
         <LayerDetail
           show={showLayer2}
@@ -213,7 +210,7 @@ export default function LogView() {
         />
       )}
 
-      {/* Layer 3 - Functional impacts */}
+      {/* Layer 3 */}
       {mood && !isGoodDay && settings.showFunctionalImpacts && (
         <LayerImpacts
           show={showLayer3}

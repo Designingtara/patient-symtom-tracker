@@ -284,8 +284,19 @@ export default function SettingsView() {
           <CardTitle className="text-lg">Voice options</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Voice input for logging entries. Coming soon.
+          <div className="flex items-center justify-between min-h-[44px]">
+            <Label htmlFor="voiceInput" className="text-sm cursor-pointer">
+              Voice input (experimental)
+            </Label>
+            <Switch
+              id="voiceInput"
+              checked={settings.voiceInput}
+              onCheckedChange={(v) => updateSetting('voiceInput', v)}
+              aria-label="Toggle voice input"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            When enabled, a microphone icon appears next to the notes field for dictation.
           </p>
         </CardContent>
       </Card>
