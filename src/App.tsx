@@ -21,6 +21,7 @@ const App = () => (
       <BrowserRouter>
         <OnboardingDialog />
         <AppShell>
+          <Routes>
             <Route path="/" element={<Navigate to="/log" replace />} />
             <Route path="/log" element={<LogView />} />
             <Route path="/dashboard" element={<DashboardView />} />
